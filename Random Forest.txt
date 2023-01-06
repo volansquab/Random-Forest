@@ -1,0 +1,58 @@
+import codecs
+import ast
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+def janome_tokenizer(text):
+	from janome.tokenizer import Tokenizer
+
+	tokenizer = Tokenizer()
+	tokendata = []
+
+	for sentence in text:
+		for token in tokenizer.tokenize(sentence):
+			tokens = str(token).split(',')
+			tokens2 = tokens[0]
+			tokens3 = tokens2.split('\t')
+			if tokens3[1] == "動詞" or tokens3[1] == "名詞":
+				tokendata.append(tokens3[0])
+	return tokendata
+
+
+def main():
+	from io import BytesIO
+	import pandas as pd
+	import numpy as np
+	from sklearn.feature_extraction.text import TfidfVectorizer
+	from sklearn.cluster import KMeans
+	from sklearn.decomposition import TruncatedSVD
+	from sklearn.preprocessing import Normalizer
+	from google.cloud import storage
+	
+	vectorizer = TfidfVectorizer(
+		min_df=1, tokenizer=janome_tokenizer)
+	# 記事で代入
+	mybucket = storage.Bucket('event_ds')
+	data_csv = mybucket.object('NME_FD.csv')
+	uri = data_csv.uri
+	%gcs read --object $uri --variable data
+	df = pd.read_csv(BytesIO(data))
+	#dataframeを配列に変換
+	ids = df['ID'].values
+	articles = df['article'].values
+
+	# 記事のベクトル化
+	tfidf_weighted_matrix = vectorizer.fit_transform(articles)
+	lsa = TruncatedSVD(10)
+	tfidf_weighted_matrix = lsa.fit_transform(tfidf_weighted_matrix)
+	tfidf_weighted_matrix = Normalizer(copy=False).fit_transform(tfidf_weighted_matrix)
+
+	km = KMeans(
+		init='k-means++',
+	)
+	km.fit(tfidf_weighted_matrix)
+
+	print(km.labels_)
+
+if __name__ == '__main__':
+	main()
